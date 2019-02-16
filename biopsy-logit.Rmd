@@ -1,0 +1,124 @@
+---
+title: "Predicting Breast Cancer II - Logistic Regression Model"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+Logistic regression is one of the mainstays in terms of predicting binary outcomes (in this case: benign or malignant tumor cells).  Besides, the model features allows us to get a deeper understanding of which factors play more risks to patients.
+
+Let's see this example, with data from the University of Wisconsin Hospitals, Madison from Dr. William H. Wolberg. He assessed biopsies of breast tumours for 699 patients up to 15 July 1992. (R Documentation, 2019)
+
+```{r code, echo=F,message=F,warning=FALSE}
+# loading cancer biopsy data:
+library(MASS)
+library(rpart)
+library(rpart.plot)
+
+# loading all columns, except ID
+cancer <- MASS::biopsy[,2:11]
+
+# renamiing cols:
+colnames(cancer) <- c("tumor.thickness",
+                     "uniform.cell.size",
+                     "uniform.cell.shape",
+                     "margin.adhesion",
+                     "epitelial.cell.size",
+                     "bare.nuclei", # 16 NAs here -- we will replace them by medians
+                     "bland.chromatin",
+                     "normal.nucleoli",
+                     "mitoses",
+                     "malignant"
+                     )
+# recoding target(dependent) variable malignant to 0 or 1
+cancer$malignant <- as.numeric(as.factor(cancer$malignant))-1
+
+
+# NA Fills - Checking NA Values:
+#View(cancer[is.na(cancer$bare.nuclei),])
+
+# only 2 of 14 values are malignant.  We will fill with the bare.nuclei median value for benign tumors
+
+#filling missing values using vector operations (more efficient than for loops!)
+cancer[is.na(cancer$bare.nuclei),]$bare.nuclei <- median(cancer[cancer$malignant == 0,]$bare.nuclei, na.rm = T)
+
+#building train-test splits:
+#generating test and train data - Data selected randomly with a 80/20 split
+set.seed(1234)
+x <- cancer
+trainIndex  <- sample(1:nrow(cancer), 0.8 * nrow(cancer))
+train <- cancer[trainIndex,]
+test <- cancer[-trainIndex,]
+  
+# Modelling Multivariate Logistic Regression:
+mylogit <- glm(malignant ~ tumor.thickness+uniform.cell.size+uniform.cell.shape+
+                  margin.adhesion+epitelial.cell.size+bare.nuclei+bland.chromatin+
+                  normal.nucleoli+mitoses, data=train,family = "binomial")
+
+# Plotting Model Summary:
+summary(mylogit)
+```
+
+## Interpreting results:
+
+Multivariate Analysis shows a p-value lower than 0.05 to the features:
+
+- tumor.thickness
+- bare.nuclei
+- mitoses
+
+## Predicting Breast Cancer - Odds Ratio Analysis
+
+```{r odds,echo=F, warning=FALSE, message=FALSE, fig.width=10}
+# OR plot
+library(finalfit)
+library(dplyr)
+
+explanatory = colnames(test)[1:9]
+dependent = colnames(test)[10]
+test %>%
+  or_plot(dependent, explanatory)
+```
+
+
+## Testing Model Parameters:
+
+```{r accuracy,echo=T}
+# TESTING & EVALUATING MODEL:
+
+# testing predictions on the model:
+logit_pred <- as.factor(round(predict(mylogit,test,type='response'),0))
+
+#building a confusion matrix
+logit_confMat <- table(test$malignant,logit_pred)
+
+#building a confusion matrix
+print('Confusion Matrix:')
+print(logit_confMat)
+
+# getting model accuracy:
+logit_accuracy <- sum(diag(logit_confMat))/sum(logit_confMat)
+print('model accuracy (in %):')
+print(round(logit_accuracy,3)) 
+
+```
+
+
+As we see in the Odds plot, the only variables who are statistically significant on increasing OR for malignancy and tumor thickness and bare nuclei.
+
+## Model performance
+
+We have a confusion matrix which shows that our model got `r logit_confMat[1,2]` false positives and `r logit_confMat[2,1]` false negative results, for a total of 140 testing samples.
+
+In terms of success metrics, it means that the model has an accuracy of `r round(logit_accuracy,2)*100`%.
+
+## Observations:
+As we ran simulations for the model, we noticed that the p-values for regression in the train dataset changed in ways of having different significative variables in each random sampling.  This means that probably the sample size needs to increase, to confirm that this model can be generalized in scale.
+
+Comparing with the results from our Decision Tree Model (https://git.io/fh7qR), we see a convergence of importance of bare nuclei to determine tumor malignancy.
+
+## Final recommendations for improvements:
+- Drop variables which are statistically insignificant for the model, to reduce "noise"
+- increase sample size, focusing on generalize the model fit
+
+Find the source code for this report at https://git.io/fh7qR
